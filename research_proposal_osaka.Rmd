@@ -1,0 +1,125 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+##Loading packages
+```{r}
+library(tidyverse)
+
+library(tidytext)
+library(widyr)
+
+library(igraph)
+library(ggraph)
+```
+##Loading the dataset
+```{r}
+user_reviews <- readr::read_csv('chihou_tweets_tokyo_translated.csv')
+```
+##Checking the dataset
+```{r}
+user_reviews
+```
+##Checking the data and it's duplication
+```{r}
+user_reviews %>% count(User, sort = TRUE)
+```
+##Checking the translated text
+```{r}
+user_reviews %>% head(10) %>% pull(English)
+```
+##Removing the date column as it is irrelavnt
+```{r}
+user_reviews <- user_reviews %>% select(-Date)
+```
+##Check if the date is removed
+```{r}
+user_reviews
+```
+##Load stopwords 
+```{r}
+stop_words
+```
+##Seperate all the words into single entities
+```{r}
+user_reviews %>%
+  unnest_tokens(output = word, input = English) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(str_detect(word, "[:alpha:]")) %>%
+  count(word, sort = TRUE)
+```
+```{r}
+review_words <- user_reviews %>%
+  unnest_tokens(output = word, input = English) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(str_detect(word, "[:alpha:]")) %>%
+  distinct()
+```
+
+#review the table
+
+```{r}
+review_words
+```
+
+## Removing unnecessary columns
+
+```{r}
+review_words <- review_words %>% select(-Tweet)
+review_words <- review_words %>% select(-`Unnamed: 0`)
+review_words
+```
+
+## Count the number of correlations and word count
+
+```{r}
+users_who_mention_word <- review_words %>%
+  count(word, name = "users_n", sort = TRUE) %>%
+  filter(users_n >= 5)
+
+word_correlations <- review_words %>%
+  semi_join(users_who_mention_word, by ="word") %>%
+  pairwise_cor(item = word, feature = User) %>%
+  filter(correlation >= 0.4)
+```
+
+## Building a word network plot
+
+```{r}
+graph_from_data_frame(d = word_correlations,
+                      vertices = users_who_mention_word %>%
+                        semi_join(word_correlations, by = c("word" = "item1"))) %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(alpha = correlation)) +
+  geom_node_point() +
+  geom_node_text(aes(color= users_n, label = name), repel = TRUE)
+```
+
+## Making the size of the graph bigger
+
+```{r fig.height = 8, fig.width = 8}
+graph_from_data_frame(d = word_correlations,
+                      vertices = users_who_mention_word %>%
+                        semi_join(word_correlations, by = c("word" = "item1"))) %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(alpha = correlation)) +
+  geom_node_point() +
+  geom_node_text(aes(color= users_n, label = name), repel = TRUE)
+
+
+```
